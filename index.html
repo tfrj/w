@@ -36,6 +36,20 @@
             box-sizing: border-box; outline: none;
         }
 
+        /* تنسيق نتائج البحث */
+        #ytResults {
+            background: #111; border-radius: 8px; margin: 5px 0;
+            max-height: 300px; overflow-y: auto; display: none;
+            border: 1px solid #333;
+        }
+        .yt-res-item {
+            padding: 10px; border-bottom: 1px solid #222; cursor: pointer;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .yt-res-item:hover { background: #222; }
+        .yt-res-item img { width: 80px; border-radius: 4px; }
+        .yt-res-title { font-size: 13px; flex: 1; }
+
         .btn-group { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 
         button { 
@@ -48,22 +62,15 @@
         .btn-sync.inactive { background-color: #b71c1c; border-color: #c62828; }
         .btn-delete { color: #ff5252; border-color: #5d1b1b; }
 
-        #statusText { text-align: center; font-size: 13px; color: #4caf50; margin: 10px 0; font-weight: bold; }
+        #statusText { text-align: center; font-size: 13px; color: #4caf50; margin: 10px 0; font-weight: bold; display:none; }
         
-        h2, p, span:not(.ep-name-text), h3 { display: none !important; }
-
         #librarySection {
             width: 95%; max-width: 650px; 
-            margin: 40px 0 50px 0; 
+            margin: 20px 0 50px 0; 
             background: #111; border-radius: 12px; border: 1px solid #222;
             padding: 15px; box-sizing: border-box; display: none;
         }
         
-        .lib-title { 
-            font-size: 17px; margin-bottom: 15px; padding-right: 12px; 
-            color: #fff; font-weight: bold; border-right: 4px solid #4caf50;
-        }
-
         .ep-list { max-height: 500px; overflow-y: auto; }
         
         .ep-item { 
@@ -74,30 +81,17 @@
         }
         
         .ep-name-clickable {
-            flex-grow: 1; padding: 15px;
-            cursor: pointer; -webkit-tap-highlight-color: transparent;
-            text-align: right;
+            flex-grow: 1; padding: 15px; cursor: pointer; text-align: right;
         }
 
-        .ep-name-text { 
-            color: #e0e0e0 !important; 
-            font-size: 15px; 
-            display: block !important;
-            pointer-events: none;
-        }
+        .ep-name-text { color: #e0e0e0; font-size: 15px; pointer-events: none; }
 
-        /* تنسيق نتائج بحث يوتيوب */
-        #ytResults {
-            background: #111; border-radius: 8px; margin-top: 5px;
-            max-height: 200px; overflow-y: auto; display: none;
-            border: 1px solid #333;
+        .lib-control-btn {
+            background: transparent; border: none; height: 50px; 
+            font-size: 18px; cursor: pointer; flex-shrink: 0; padding: 0 12px;
         }
-        .yt-res-item {
-            padding: 10px; border-bottom: 1px solid #222; cursor: pointer;
-            display: flex; align-items: center; gap: 10px; font-size: 13px;
-        }
-        .yt-res-item:hover { background: #222; }
-        .yt-res-item img { width: 60px; border-radius: 4px; }
+        .single-delete-btn { color: #ff4444; }
+        .single-edit-btn { color: #4caf50; }
     </style>
 </head>
 <body>
@@ -108,12 +102,12 @@
     </div>
 
     <div id="admin">
-        <div style="margin-bottom: 15px;">
-            <input type="text" id="ytSearchInput" placeholder="بحث سريع في يوتيوب..." oninput="searchYouTube()">
+        <div style="background: #1a1a1a; padding: 10px; border-radius: 10px; margin-bottom: 10px;">
+            <input type="text" id="ytSearchInput" placeholder="بحث في يوتيوب وتشغيل مباشر..." onkeypress="if(event.key==='Enter') searchYouTube()">
             <div id="ytResults"></div>
         </div>
 
-        <input type="text" id="urlInput" placeholder="رابط مباشر (m3u8, mp4)..." onpaste="handlePaste(event)">
+        <input type="text" id="urlInput" placeholder="رابط البث المباشر الأساسي..." onpaste="handlePaste(event)">
         
         <div style="border-top: 1px solid #222; margin-top: 15px; padding-top: 10px;">
             <input type="text" id="epNameInput" placeholder="اسم العمل / الحلقة">
@@ -125,7 +119,7 @@
             <button id="syncToggleBtn" class="btn-sync" onclick="toggleSync()">جاري التحميل...</button>
             <button class="btn-delete" onclick="deleteVideo()">حذف فيديو البث 🗑️</button>
         </div>
-        <div id="statusText">تم التحديث بنجاح ✅</div>
+        <div id="statusText"></div>
     </div>
 
     <div id="librarySection">
@@ -146,131 +140,148 @@
         // تهيئة يوتيوب
         function onYouTubeIframeAPIReady() {
             ytPlayer = new YT.Player('ytPlayer', {
-                events: { 'onStateChange': onPlayerStateChange }
+                events: { 'onStateChange': function(e) { if(isAdmin) updateDatabaseState(); } }
             });
         }
 
-        function onPlayerStateChange(event) {
-            if (isAdmin && isSyncEnabled) updateDatabaseState();
+        // بحث يوتيوب المباشر
+        async function searchYouTube() {
+            var q = document.getElementById('ytSearchInput').value;
+            if(!q) return;
+            var resBox = document.getElementById('ytResults');
+            resBox.innerHTML = "<div style='padding:10px; text-align:center;'>جاري البحث...</div>";
+            resBox.style.display = "block";
+
+            try {
+                const response = await fetch(`https://pipedapi.kavin.rocks/search?q=${encodeURIComponent(q)}&filter=videos`);
+                const data = await response.json();
+                let html = "";
+                data.content.forEach(v => {
+                    let vidId = v.url.split('v=')[1];
+                    html += `<div class="yt-res-item" onclick="forcePlayYT('${vidId}')">
+                        <img src="${v.thumbnail}">
+                        <div class="yt-res-title">${v.title}</div>
+                    </div>`;
+                });
+                resBox.innerHTML = html;
+            } catch(e) { resBox.innerHTML = "خطأ في الاتصال"; }
+        }
+
+        function forcePlayYT(id) {
+            var fullUrl = "https://www.youtube.com/watch?v=" + id;
+            updateDB({ url: fullUrl, status: "playing", time: 0 });
+            document.getElementById('ytResults').style.display = "none";
+            document.getElementById('ytSearchInput').value = "";
+            playMedia(fullUrl);
         }
 
         function playMedia(url) {
             if (!url) { 
-                videoElement.src = ""; ytContainer.style.display = "none"; 
-                videoElement.style.display = "block"; lastUrl = ""; return; 
+                videoElement.src = ""; videoElement.style.display="block";
+                ytContainer.style.display="none"; lastUrl = ""; return; 
             }
             if (url === lastUrl) return;
             lastUrl = url;
 
             if (url.includes('youtube.com') || url.includes('youtu.be')) {
-                var videoId = extractYoutubeId(url);
+                var vidId = url.includes('v=') ? url.split('v=')[1].split('&')[0] : url.split('/').pop();
                 videoElement.style.display = "none";
                 ytContainer.style.display = "block";
                 videoElement.pause();
-                ytPlayer.loadVideoById(videoId);
+                ytPlayer.loadVideoById(vidId);
             } else {
                 ytContainer.style.display = "none";
                 videoElement.style.display = "block";
-                if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
-                
-                if (Hls.isSupported() && (url.includes('m3u8') || url.includes('.ts'))) {
+                if(ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+                if (Hls.isSupported() && url.includes('m3u8')) {
                     hls.destroy(); hls = new Hls();
                     hls.loadSource(url); hls.attachMedia(videoElement);
                 } else { videoElement.src = url; }
-                videoElement.play().catch(function(e){});
+                videoElement.play().catch(e => {});
             }
         }
 
-        function extractYoutubeId(url) {
-            var regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-            var match = url.match(regExp);
-            return (match && match[2].length == 11) ? match[2] : null;
-        }
-
-        // وظيفة البحث في يوتيوب
-        function searchYouTube() {
-            var query = document.getElementById('ytSearchInput').value;
-            if (query.length < 3) { document.getElementById('ytResults').style.display = "none"; return; }
-            
-            var script = document.createElement('script');
-            script.src = "https://suggestqueries.google.com/complete/search?client=youtube&ds=yt&q=" + encodeURIComponent(query) + "&callback=handleYTResults";
-            document.body.appendChild(script);
-        }
-
-        window.handleYTResults = function(data) {
-            var results = data[1];
-            var html = "";
-            results.forEach(function(item) {
-                html += `<div class="yt-res-item" onclick="selectYTVideo('${item[0]}')">🔍 ${item[0]}</div>`;
-            });
-            var container = document.getElementById('ytResults');
-            container.innerHTML = html;
-            container.style.display = "block";
-        };
-
-        function selectYTVideo(name) {
-            // ملاحظة: بما أنه لا نملك API Key كامل هنا، نستخدم رابط البحث المباشر لتشغيل أول نتيجة أو تحويلها لرابط
-            // الأفضل هو تشغيل المقطع عبر المعرف، هنا سنقوم بتحويل اسم البحث لرابط يوتيوب
-            var searchUrl = "https://www.youtube.com/results?search_query=" + encodeURIComponent(name);
-            // للأمان: نطلب من المسؤول لصق الرابط أو سأقوم بعمل خدعة بسيطة
+        // دالة تحديث قاعدة البيانات
+        function updateDB(data) {
             var xhr = new XMLHttpRequest();
-            // تحديث قاعدة البيانات بعنوان البحث (سيعرف النظام أنه يوتيوب)
-            // ملاحظة: يفضل لصق الرابط المباشر لضمان الدقة، لكن سأجعل البحث يفتح نافذة لاختيار الرابط
-            window.open(searchUrl, '_blank');
-            document.getElementById('ytResults').style.display = "none";
-            document.getElementById('ytSearchInput').value = "";
-            showStatus("اختر الفيديو وانسخ رابطه هنا 👇");
+            xhr.open("PATCH", dbUrl, true);
+            xhr.send(JSON.stringify(data));
         }
 
-        // بقية الوظائف الأصلية كما هي مع تعديلات بسيطة للتوافق
         function renderLibrary(libData) {
             var container = document.getElementById('episodesContainer');
             container.innerHTML = "";
-            if (!libData) { 
-                container.innerHTML = "<div style='text-align:center; padding:30px; color:#666; display:block !important;'>المكتبة فارغة</div>"; 
-                return; 
-            }
+            if (!libData) { container.innerHTML = "<div style='text-align:center; padding:20px; color:#666;'>المكتبة فارغة</div>"; return; }
+            
             Object.keys(libData).forEach(function(key) {
                 var ep = libData[key];
                 var item = document.createElement('div');
                 item.className = "ep-item";
+                
                 var nameBox = document.createElement('div');
                 nameBox.className = "ep-name-clickable";
                 nameBox.innerHTML = '<span class="ep-name-text">' + ep.name + '</span>';
                 nameBox.onclick = function() { 
-                    if (isAdmin) {
-                        var xhr = new XMLHttpRequest();
-                        xhr.open("PATCH", dbUrl, true);
-                        xhr.send(JSON.stringify({ url: ep.url, status: "playing", time: 0 }));
-                    }
+                    if (isAdmin) updateDB({ url: ep.url, status: "playing", time: 0 });
                     playMedia(ep.url); 
                 };
+
                 if (isAdmin) {
                     var delBtn = document.createElement('button');
                     delBtn.className = "lib-control-btn single-delete-btn";
-                    delBtn.style.display = "block"; delBtn.innerHTML = "✕";
+                    delBtn.innerHTML = "✕";
                     delBtn.onclick = function(e) { e.stopPropagation(); deleteSingleEpisode(key); };
+                    
+                    var editBtn = document.createElement('button');
+                    editBtn.className = "lib-control-btn single-edit-btn";
+                    editBtn.innerHTML = "✏️";
+                    editBtn.onclick = function(e) { e.stopPropagation(); editSingleEpisode(key, ep.name, ep.url); };
+
                     item.appendChild(delBtn);
+                    item.appendChild(editBtn);
                 }
                 item.appendChild(nameBox);
                 container.appendChild(item);
             });
         }
 
+        function editSingleEpisode(key, oldName, oldUrl) {
+            var n = prompt("الاسم الجديد:", oldName);
+            var u = prompt("الرابط الجديد:", oldUrl);
+            if (n && u) {
+                var xhr = new XMLHttpRequest();
+                xhr.open("PATCH", dbBaseUrl + "/library/" + key + ".json", true);
+                xhr.onload = function() { loadStream(); };
+                xhr.send(JSON.stringify({ name: n, url: u }));
+            }
+        }
+
+        function deleteSingleEpisode(key) {
+            if(confirm("حذف؟")) {
+                var xhr = new XMLHttpRequest();
+                xhr.open("DELETE", dbBaseUrl + "/library/" + key + ".json", true);
+                xhr.onload = function() { loadStream(); };
+                xhr.send();
+            }
+        }
+
         function syncPlayer(data) {
             if (!data) return;
             isSyncEnabled = data.syncEnabled !== false; 
             updateSyncButtonUI();
+
             var lib = document.getElementById('librarySection');
-            if (isAdmin || !isSyncEnabled) { lib.style.display = "block"; renderLibrary(data.library); }
-            else { lib.style.display = "none"; }
+            if (isAdmin || !isSyncEnabled) {
+                lib.style.display = "block";
+                renderLibrary(data.library);
+            } else { lib.style.display = "none"; }
 
             if (isSyncEnabled && !isAdmin) {
                 if (data.url !== lastUrl) playMedia(data.url);
-                if (data.url.includes('youtube')) {
-                   if (ytPlayer && ytPlayer.seekTo && Math.abs(ytPlayer.getCurrentTime() - data.time) > 5) ytPlayer.seekTo(data.time);
-                } else {
-                   if (Math.abs(videoElement.currentTime - data.time) > 5) videoElement.currentTime = data.time;
+                var cur = data.url.includes('youtube') ? ytPlayer.getCurrentTime() : videoElement.currentTime;
+                if (Math.abs(cur - data.time) > 4) {
+                    if(data.url.includes('youtube')) ytPlayer.seekTo(data.time);
+                    else videoElement.currentTime = data.time;
                 }
             }
         }
@@ -282,83 +293,60 @@
             xhr.send();
         }
 
-        function updateDatabaseState() {
-            if (!isAdmin || !isSyncEnabled) return;
-            var currentTime = 0;
-            var isPaused = false;
-            if (lastUrl.includes('youtube')) {
-                currentTime = ytPlayer.getCurrentTime();
-                isPaused = ytPlayer.getPlayerState() !== 1;
-            } else {
-                currentTime = videoElement.currentTime;
-                isPaused = videoElement.paused;
-            }
-            var xhr = new XMLHttpRequest();
-            xhr.open("PATCH", dbUrl, true);
-            xhr.send(JSON.stringify({ status: isPaused ? "paused" : "playing", time: currentTime }));
-        }
-
         function toggleSync() {
             if (!isAdmin) return;
             isSyncEnabled = !isSyncEnabled;
-            var xhr = new XMLHttpRequest();
-            xhr.open("PATCH", dbUrl, true);
-            xhr.send(JSON.stringify({ syncEnabled: isSyncEnabled }));
+            updateDB({ syncEnabled: isSyncEnabled });
             updateSyncButtonUI();
         }
 
         function updateSyncButtonUI() {
             var btn = document.getElementById('syncToggleBtn');
             btn.innerText = isSyncEnabled ? "المزامنة: مفعلة ✅" : "المزامنة: معطلة ❌";
-            btn.className = isSyncEnabled ? "btn-sync active" : "btn-sync inactive";
+            btn.className = "btn-sync " + (isSyncEnabled ? "active" : "inactive");
         }
+
+        function addEpisode() {
+            var name = document.getElementById('epNameInput').value;
+            var url = document.getElementById('epUrlInput').value;
+            if (name && url) {
+                var xhr = new XMLHttpRequest();
+                xhr.open("POST", dbBaseUrl + "/library.json", true);
+                xhr.onload = function() {
+                    document.getElementById('epNameInput').value = "";
+                    document.getElementById('epUrlInput').value = "";
+                    loadStream();
+                };
+                xhr.send(JSON.stringify({ name: name, url: url }));
+            }
+        }
+
+        function updateDatabaseState() {
+            if (!isAdmin || !isSyncEnabled) return;
+            var t = lastUrl.includes('youtube') ? ytPlayer.getCurrentTime() : videoElement.currentTime;
+            var s = lastUrl.includes('youtube') ? (ytPlayer.getPlayerState()===1?"playing":"paused") : (videoElement.paused?"paused":"playing");
+            updateDB({ status: s, time: t || 0 });
+        }
+
+        setInterval(function() {
+            loadStream();
+            if (isAdmin && isSyncEnabled) updateDatabaseState();
+        }, 3000);
 
         function handlePaste(event) {
             setTimeout(function() {
                 var val = document.getElementById('urlInput').value.trim();
                 if (val) {
-                    var xhr = new XMLHttpRequest();
-                    xhr.open("PATCH", dbUrl, true);
-                    xhr.send(JSON.stringify({ url: val, status: "playing", time: 0 }));
+                    updateDB({ url: val, status: "playing", time: 0 });
                     document.getElementById('urlInput').value = ''; 
-                    showStatus("تم التشغيل ✅");
                     playMedia(val);
                 }
             }, 100);
         }
 
         function deleteVideo() {
-            if(confirm("حذف البث؟")) {
-                var xhr = new XMLHttpRequest();
-                xhr.open("PATCH", dbUrl, true);
-                xhr.send(JSON.stringify({ url: "", status: "paused", time: 0 }));
-            }
+            if(confirm("حذف البث؟")) updateDB({ url: "", status: "paused", time: 0 });
         }
-
-        function showStatus(msg) {
-            var status = document.getElementById('statusText');
-            status.innerText = msg; status.style.display = "block";
-            setTimeout(function() { status.style.display = "none"; }, 3000);
-        }
-
-        function addEpisode() {
-            var name = document.getElementById('epNameInput').value.trim();
-            var url = document.getElementById('epUrlInput').value.trim();
-            if (!name || !url) { alert("أدخل الاسم والرابط"); return; }
-            var xhr = new XMLHttpRequest();
-            xhr.open("POST", dbBaseUrl + "/library.json", true);
-            xhr.onload = function() {
-                document.getElementById('epNameInput').value = "";
-                document.getElementById('epUrlInput').value = "";
-                loadStream();
-            };
-            xhr.send(JSON.stringify({ name: name, url: url }));
-        }
-
-        setInterval(function() {
-            if (!isAdmin) loadStream();
-            else { if (isSyncEnabled) updateDatabaseState(); loadStream(); }
-        }, 3000);
 
         window.onload = function() {
             loadStream();
