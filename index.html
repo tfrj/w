@@ -2,96 +2,42 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Stream | البحث الذكي</title>
+    <title>رادار الأفلام الحصرية</title>
     <style>
-        :root { --main: #ff0000; --bg: #050505; --card: #121212; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: white; margin: 0; padding: 10px; }
-        .search-area { text-align: center; padding: 50px 10px; }
-        input { width: 90%; max-width: 600px; padding: 18px; border-radius: 50px; border: 2px solid #333; background: #1a1a1a; color: white; font-size: 1.2rem; outline: none; transition: 0.3s; }
-        input:focus { border-color: var(--main); box-shadow: 0 0 15px rgba(255,0,0,0.3); }
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; padding: 20px; }
-        .card { background: var(--card); border-radius: 12px; overflow: hidden; cursor: pointer; transition: 0.3s; border: 1px solid #222; }
-        .card:hover { transform: translateY(-5px); border-color: var(--main); }
-        .card img { width: 100%; height: 230px; object-fit: cover; }
-        .card-title { padding: 10px; font-size: 0.85rem; text-align: center; font-weight: bold; }
-        
-        #player-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 9999; }
-        .controls { background: #111; padding: 10px; display: flex; justify-content: space-between; align-items: center; }
-        select { background: #222; color: white; padding: 8px; border-radius: 5px; border: 1px solid var(--main); }
-        iframe { width: 100%; height: calc(100% - 60px); border: none; }
-        .close-btn { color: white; font-size: 25px; cursor: pointer; background: var(--main); padding: 5px 15px; border-radius: 5px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 40px; background: #0b0b0b; color: #fff; }
+        .search-box { background: #1f1f1f; padding: 30px; border-radius: 15px; border: 1px solid #ff0000; box-shadow: 0 0 20px rgba(255,0,0,0.2); }
+        input { padding: 12px; width: 70%; border-radius: 5px; border: 1px solid #444; background: #333; color: white; margin-bottom: 20px; }
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 500px; margin: auto; }
+        button { padding: 15px; cursor: pointer; background: #ff0000; color: white; border: none; border-radius: 5px; font-weight: bold; transition: 0.3s; }
+        button:hover { background: #b30000; transform: scale(1.05); }
     </style>
 </head>
 <body>
 
-    <div class="search-area">
-        <h1 style="color: var(--main); margin-bottom: 20px;">البحث الذكي</h1>
-        <input type="text" id="query" placeholder="اكتب اسم الفيلم أو المسلسل بالإنجليزية..." oninput="search()">
+<div class="search-box">
+    <h1>🚀 رادار الأفلام (مباشر)</h1>
+    <input type="text" id="mName" placeholder="اكتب اسم الفيلم (مثلاً: Joker 2)...">
+    
+    <div class="btn-grid">
+        <button onclick="go('egybest')">بحث في إيجي بست</button>
+        <button onclick="go('mycima')">بحث في ماي سيما</button>
+        <button onclick="go('akoam')">بحث في أكوام</button>
+        <button onclick="go('arabseed')">بحث في عرب سيد</button>
     </div>
-
-    <div id="results" class="grid"></div>
-
-    <div id="player-overlay">
-        <div class="controls">
-            <select id="server-select" onchange="changeServer()">
-                <option value="https://vidsrc.me/embed/">سيرفر 1 (الأفضل)</option>
-                <option value="https://vidsrc.to/embed/">سيرفر 2</option>
-                <option value="https://2embed.cc/embed/">سيرفر 3</option>
-            </select>
-            <div class="close-btn" onclick="closePlayer()">إغلاق ✕</div>
-        </div>
-        <iframe id="main-player" src="" allowfullscreen></iframe>
-    </div>
+</div>
 
 <script>
-    const API_KEY = '3fd2be37160edd1dbc20518206d64d1c';
-    let currentId = '';
-    let currentType = '';
-
-    async function search() {
-        const q = document.getElementById('query').value;
-        if(q.length < 2) return;
-
-        try {
-            const res = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&query=${encodeURIComponent(q)}&language=en-US`);
-            const data = await res.json();
-            
-            let html = '';
-            data.results.forEach(item => {
-                if(!item.poster_path) return;
-                const name = item.title || item.name;
-                const type = item.media_type;
-                html += `
-                    <div class="card" onclick="openPlayer('${item.id}', '${type}')">
-                        <img src="https://image.tmdb.org/t/p/w500${item.poster_path}">
-                        <div class="card-title">${name}</div>
-                    </div>
-                `;
-            });
-            document.getElementById('results').innerHTML = html;
-        } catch (err) { console.error("خطأ في جلب البيانات"); }
-    }
-
-    function openPlayer(id, type) {
-        currentId = id;
-        currentType = type;
-        const modal = document.getElementById('player-overlay');
-        modal.style.display = 'block';
-        changeServer();
-    }
-
-    function changeServer() {
-        const server = document.getElementById('server-select').value;
-        const frame = document.getElementById('main-player');
-        // تركيب الرابط بناءً على النوع (فيلم أو مسلسل)
-        const path = (currentType === 'tv') ? `tv?tmdb=${currentId}&sea=1&epi=1` : `movie?tmdb=${currentId}`;
-        frame.src = server + path;
-    }
-
-    function closePlayer() {
-        document.getElementById('player-overlay').style.display = 'none';
-        document.getElementById('main-player').src = '';
+    function go(site) {
+        var movie = document.getElementById('mName').value;
+        if(!movie) { alert("اكتب اسم الفيلم أولاً يا وحش"); return; }
+        
+        var url = "";
+        if(site == 'egybest') url = "https://www.google.com/search?q=site:egybest.plus " + movie;
+        if(site == 'mycima') url = "https://www.google.com/search?q=site:mycima.dev " + movie;
+        if(site == 'akoam') url = "https://www.google.com/search?q=site:ak.sv " + movie;
+        if(site == 'arabseed') url = "https://www.google.com/search?q=site:arabseed.show " + movie;
+        
+        window.open(url, '_blank');
     }
 </script>
 
